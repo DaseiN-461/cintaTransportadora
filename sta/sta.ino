@@ -4,7 +4,10 @@
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+#include <Arduino.h>
 
+#include <Wire.h>
+#include <ModbusMaster.h>
 
 #include <esp_now.h>
 #include <WiFi.h>
@@ -17,10 +20,27 @@ esp_now_peer_info_t peerInfo;
 
 int packet;
 
+int updateCode = 99999999; 
+int stopCode = 88888888;
+
+int limInfVel = 0;
+int limSupVel = 4095;
+
+
 String success;
 
-int vel_VFD = 50;
+int vel_VFD = 0;
 
+int waitStartVFD = 60;
+
+ModbusMaster node;
+
+void preTransmission();
+void postTransmission();
+void setupRS485();
+uint8_t marchMotor(int speed);
+uint8_t stopMotor();
+uint8_t updateInfo();
 
 
 // Callback when data is sent
@@ -45,26 +65,40 @@ void data_receive(const uint8_t * mac, const uint8_t *incomingData, int len) {
 
   //change vfd velocity by modbus
   
-  if(packet == 99999999){
-    Serial.println("Updating remote control");
-    esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &vel_VFD, sizeof(vel_VFD));
-     
-    if (result == ESP_OK) {
-      Serial.println("Sent with success");
-    }
-    else {
-      Serial.println("Error sending the data");
-    }
-  }else{
-    vel_VFD = packet;
-    esp_now_send(broadcastAddress, (uint8_t *) &vel_VFD, sizeof(vel_VFD));    
+  if(packet == updateCode){
+          Serial.println("Updating remote control");
+          esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &vel_VFD, sizeof(vel_VFD));
+           
+          if (result == ESP_OK) {
+                  Serial.println("Sent with success");
+          }
+          else {
+                  Serial.println("Error sending the data");
+          }
+  }
+
+  if(packet == stopCode){
+          uint8_t mb_error = stopMotor();
+  }
+ 
+  else{
+          if(packet>limInfVel && packet<limSupVel){
+                  vel_VFD = packet;
+                  uint8_t mb_error = marchMotor(vel_VFD);
+                  esp_now_send(broadcastAddress, (uint8_t *) &vel_VFD, sizeof(vel_VFD));
+          }
   }
   
-}
+
+
+
+  
  
 void setup() {
-
-  Serial.begin(115200);
+  delay(waitStartVFD*1000); //wait to start VFD
+  //comment every Serial if test with max485 converter or use other uart port
+  //Serial.begin(115200);
+  setupRS485();
   
   
   WiFi.mode(WIFI_STA);
@@ -98,3 +132,57 @@ void loop() {
   
 
 }
+
+////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////
+/* Modbus RTU functions */
+
+void preTransmission()
+{
+  digitalWrite(MAX485_RE_NEG, 1);
+  digitalWrite(MAX485_DE, 1);
+  delay(10);
+}
+
+void postTransmission()
+{
+  digitalWrite(MAX485_RE_NEG, 0);
+  digitalWrite(MAX485_DE, 0);
+  delay(10);
+}
+
+void setupRS485() {
+  pinMode(MAX485_RE_NEG, OUTPUT);
+  pinMode(MAX485_DE, OUTPUT);
+  digitalWrite(MAX485_RE_NEG, 0);
+  digitalWrite(MAX485_DE, 0);
+
+  Serial.begin(9600, SERIAL_8E1);
+  node.begin(1, Serial);
+  node.preTransmission(preTransmission);
+  node.postTransmission(postTransmission);
+}
+
+uint8_t marchMotor(int speed) {
+    uint8_t result;
+    if(speed > 0) {
+        node.writeSingleRegister(0x0063, 0x47F); //clock sense
+    } else if (speed < 0) {
+        node.writeSingleRegister(0x0063, 0xC7F); // inverse clock sense
+    }
+    result = node.writeSingleRegister(0x0064, map(abs(speed), 0, 100, 0, 16383));
+    return result;
+}
+
+uint8_t stopMotor() {
+    uint8_t result;
+    node.writeSingleRegister(0x0064, 0);
+    result = node.writeSingleRegister(0x0063, 0x047E);
+    return result;
+}
+
+  
+}
+////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////
