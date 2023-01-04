@@ -30,7 +30,7 @@ int limSupVel = 4095;
 String success;
 
 int vel_VFD = 0;
-
+uint8_t mb_ok = ;                         //  Terminar  /////////////////////////////////////////
 int waitStartVFD = 60;
 
 ModbusMaster node;
@@ -85,7 +85,17 @@ void data_receive(const uint8_t * mac, const uint8_t *incomingData, int len) {
           if(packet>limInfVel && packet<limSupVel){
                   vel_VFD = packet;
                   uint8_t mb_error = marchMotor(vel_VFD);
-                  esp_now_send(broadcastAddress, (uint8_t *) &vel_VFD, sizeof(vel_VFD));
+
+                  //check the error return of vfd
+                  if(mb_error != mb_ok){
+                          //send acknowledgment to remote control
+                          esp_now_send(broadcastAddress, (uint8_t *) &vel_VFD, sizeof(vel_VFD));
+                  }else{
+                          // Error!
+                  }
+
+
+                  
           }
   }
   
