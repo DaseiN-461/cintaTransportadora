@@ -1,4 +1,4 @@
-//#include <Arduino.h>
+#include <Arduino.h>
 
 
 #include <esp_now.h>
@@ -16,11 +16,12 @@
 uint8_t broadcastAddress[] = {0x94, 0xB9, 0x7E, 0xC1, 0xFC, 0x30};
  
 bool update_flag = false;
+bool conection_flag = false;
 
 String success;
 
 int packet;
-
+int request;
 
 
 esp_now_peer_info_t peerInfo;
@@ -38,6 +39,9 @@ int vel_current;
 
 int count_timeout = 0;
 int timeout = 10;
+
+esp_err_t result;
+
 
 ////////////////////////////////////////////////Defines for DeepSleep//////////////////////////////////////////////
 
@@ -62,16 +66,53 @@ void print_wakeup_reason();
 void isr_btn1();
 void isr_btn2();
 
+void update_velocity(){
+  request = 99999999;
+  
+  result = esp_now_send(broadcastAddress, (uint8_t *) &request, sizeof(packet));
+     
+    if (result == ESP_OK) {
+      Serial.println("Sent with success");
+    }
+    else {
+      Serial.println("Error sending the data");
+    }
+  
+}
+
+
+uint16_t bv;
+
+
+
+void print_voltage(uint16_t bv){
+  
+  float battVoltage = ((float)bv/4095.0)*2.0*3.3*(1100/1000.0);
+  String voltage = String(battVoltage) + "V";
+
+  tft.setCursor(70,170);
+  tft.fillRect(50,150,100,50,TFT_DARKGREY);
+  tft.setTextColor(TFT_GREEN);
+  tft.setTextSize(2);
+  tft.println(voltage);
+  
+}
+
+
 
 void data_sent(const uint8_t *mac_addr, esp_now_send_status_t status) {
   Serial.print("\r\nLast Packet Send Status:\t");
   Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
   if (status ==0){
     success = "Delivery Success :)";
+    conection_flag = true;
   }
   else{
     success = "Delivery Fail :(";
+    conection_flag = false;
   }
+
+  update_flag = false;
 }
 
 // Callback when data is received
@@ -79,6 +120,7 @@ void data_receive(const uint8_t * mac, const uint8_t *incomingData, int len) {
   memcpy(&packet, incomingData, sizeof(packet));
   Serial.print("Packet received: ");
   Serial.println(packet);
+  
   if(!update_flag){
     vel_current = packet;
     update_flag = true;
@@ -92,8 +134,45 @@ void data_receive(const uint8_t * mac, const uint8_t *incomingData, int len) {
 }
 
 
+void espNow_begin(){
+  WiFi.mode(WIFI_STA);
+  delay(100);
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("Error initializing ESP-NOW");
+    return;
+  }
+  esp_now_register_send_cb(data_sent);
+  
+  
+  memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+  peerInfo.channel = 0;  
+  peerInfo.encrypt = false;   
+      
+  if (esp_now_add_peer(&peerInfo) != ESP_OK){
+    Serial.println("Failed to add peer");
+    return;
+  }else{
+    conection_flag = true;
+  }
+  // Register for a callback function that will be called when data is received
+  esp_now_register_recv_cb(data_receive);
+
+}
+
+void update_verification(){
+  if(!update_flag){
+    tft.fillRect(0,50,200,70,TFT_DARKGREY);
+    tft.setTextColor(TFT_RED);
+    tft.setCursor(30,70);
+    tft.setTextSize(1);
+    tft.print("No connection :(");
+  }
+}
+
 void setup() {
   
+  
+
   btnConfig();
   
   Serial.begin(115200);
@@ -115,6 +194,8 @@ void setup() {
   
   delay(1000);
 
+  bv = analogRead(14);
+  print_voltage(bv);
   ////////////////////////////////////////////////////////////////////////////////////////////////////////////
   ///////////////////////////////////   Debugging                    /////////////////////////////////////////
   ////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -132,26 +213,7 @@ void setup() {
   ////////////////////////////////////////////////////////////////////////////////////////////////////////////
   ///////////////////////////////////      Pair with BLE Server      /////////////////////////////////////////
   ////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  WiFi.mode(WIFI_STA);
-  delay(100);
-  if (esp_now_init() != ESP_OK) {
-    Serial.println("Error initializing ESP-NOW");
-    return;
-  }
-  esp_now_register_send_cb(data_sent);
-  
-  
-  memcpy(peerInfo.peer_addr, broadcastAddress, 6);
-  peerInfo.channel = 0;  
-  peerInfo.encrypt = false;   
-      
-  if (esp_now_add_peer(&peerInfo) != ESP_OK){
-    Serial.println("Failed to add peer");
-    return;
-  }
-  // Register for a callback function that will be called when data is received
-  esp_now_register_recv_cb(data_receive);
-
+  espNow_begin();
   
   ////////////////////////////////////////////////////////////////////////////////////////////////////////////
   ////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -161,21 +223,13 @@ void setup() {
   ////////////////////////////////////////////////////////////////////////////////////////////////////////////
   ///////////////////////////////////     Read velocity from VFD     /////////////////////////////////////////
   ////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  int vel_request = 99;
+  update_velocity();
+  ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  delay(1000);
   
-  esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &vel_request, sizeof(packet));
-     
-    if (result == ESP_OK) {
-      Serial.println("Sent with success");
-    }
-    else {
-      Serial.println("Error sending the data");
-    }
-  
-  ////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  ////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  ////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+  update_verification();
 
   ////////////////////////////////////////////////////////////////////////////////////////////////////////////
   //////////////////////////////     Loop, process and transmit vel     //////////////////////////////////////
@@ -187,14 +241,25 @@ void setup() {
   
   while(count_timeout < timeout){
     unsigned long currentTime = millis();
+    
+    if(conection_flag && update_flag){
+      btnHandler();
+    }
 
-    btnHandler();
+    
      
     if(currentTime - previousTime >= 1000){
       count_timeout++;
       Serial.printf("time out: [%d]\r\n", count_timeout);
 
       previousTime = currentTime;
+      update_verification();
+      if(!conection_flag){
+        espNow_begin();
+      }
+      if(!update_flag){
+        update_velocity();
+      }
     }
     
   }
@@ -202,6 +267,18 @@ void setup() {
   ///////////////////////////////////          if timeout            /////////////////////////////////////////
                    ///////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////     Send data to BLE Server
+/*
+  request = 98; //code to sleep advertisement
+  
+  result = esp_now_send(broadcastAddress, (uint8_t *) &request, sizeof(packet));
+     
+    if (result == ESP_OK) {
+      Serial.println("Sent with success");
+    }
+    else {
+      Serial.println("Error sending the data");
+    }
+*/
                    ///////////////////////////////////////////////////////////////////////////////////////////
   ///////////////////////////////////        Go to Deep Sleep        /////////////////////////////////////////
                    ///////////////////////////////////////////////////////////////////////////////////////////
@@ -253,11 +330,12 @@ void btnHandler(){
     //numberKeyPresses--;
     vel_current -= vel_step;
     Serial.printf("velocity: [%d]\r\n",vel_current);
-    print_vel(vel_current);
+    //print_vel(vel_current);
+   
     //Serial.println(numberKeyPresses);
     packet = vel_current;
     
-    esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &packet, sizeof(packet));
+    result = esp_now_send(broadcastAddress, (uint8_t *) &packet, sizeof(packet));
      
     if (result == ESP_OK) {
       Serial.println("Sent with success");
@@ -272,13 +350,14 @@ void btnHandler(){
     //numberKeyPresses++;
     vel_current += vel_step;
     Serial.printf("velocity: [%d]\r\n",vel_current);
-    print_vel(vel_current);
+    //print_vel(vel_current);
+    
     //Serial.println(numberKeyPresses);
 
     packet = vel_current;
     Serial.print("Packet to send: ");
     Serial.println(packet);
-    esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &packet, sizeof(packet));
+    result = esp_now_send(broadcastAddress, (uint8_t *) &packet, sizeof(packet));
      
     if (result == ESP_OK) {
       Serial.println("Sent with success");
@@ -342,7 +421,8 @@ void tft_init(){
 }
 
 void print_vel(int vel){
-    tft.fillRect(10,50,100,50,TFT_DARKGREY);
+    tft.fillRect(0,50,200,70,TFT_DARKGREY);
+    tft.setTextSize(4);
     tft.setTextColor(TFT_RED);
     tft.setCursor(30,70);
     tft.print(vel);

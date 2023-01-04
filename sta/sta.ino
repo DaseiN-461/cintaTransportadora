@@ -45,7 +45,7 @@ void data_receive(const uint8_t * mac, const uint8_t *incomingData, int len) {
 
   //change vfd velocity by modbus
   
-  if(packet == 99){
+  if(packet == 99999999){
     Serial.println("Updating remote control");
     esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &vel_VFD, sizeof(vel_VFD));
      
@@ -57,6 +57,7 @@ void data_receive(const uint8_t * mac, const uint8_t *incomingData, int len) {
     }
   }else{
     vel_VFD = packet;
+    esp_now_send(broadcastAddress, (uint8_t *) &vel_VFD, sizeof(vel_VFD));    
   }
   
 }
