@@ -37,6 +37,11 @@ int vel_step = 5;
 int vel_VFD;
 int vel_current;
 
+int limInfVel = 0;
+int limSupVel = 4095;
+
+
+
 int count_timeout = 0;
 int timeout = 10;
 
@@ -121,11 +126,19 @@ void data_receive(const uint8_t * mac, const uint8_t *incomingData, int len) {
   Serial.print("Packet received: ");
   Serial.println(packet);
   
-  if(!update_flag){
-    vel_current = packet;
-    update_flag = true;
-    Serial.println("hello world");
-    print_vel(vel_current);
+  if(packet>limInfVel && packet<limSupVel){
+          if(!update_flag){
+                  vel_current = packet;
+                  update_flag = true;
+                  Serial.println("hello world");
+                  print_vel(vel_current);
+          }
+  }else{
+          /*  Si tiene otro tipo de paquete por recibir
+          if(packet==){
+
+          }
+          */
   }
   
   
