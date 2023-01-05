@@ -24,12 +24,12 @@ int request;
 esp_now_peer_info_t peerInfo;
 
 
-int btn1 = 0;
-int btn2 = 35;
+int btn+ = 12;
+int btn- = 13;
+int btnPow = 14;
 
 int vel_step = 5;
 int vel_VFD;
-int vel_current;
 
 int limInfVel = 0;
 int limSupVel = 4095;
@@ -45,7 +45,7 @@ TFT_eSPI tft = TFT_eSPI();
 
 ezButton btnL(btn1);
 ezButton btnR(btn2);
-
+ezButton btnPWR(btnPow);
 
 void tft_init();
 void espNow_begin();
@@ -76,10 +76,9 @@ void data_receive(const uint8_t * mac, const uint8_t *incomingData, int len) {
 
         if(packet>limInfVel && packet<limSupVel){
                 if(!update_flag){
-                        vel_current = packet;
+                        vel_VFD = packet;
                         update_flag = true;
-                        Serial.println("hello world");
-                        print_vel(vel_current);
+                        print_vel(vel_VFD);
                 }
         }else{
 
@@ -95,10 +94,7 @@ void setup() {
         tft.setRotation(4);
         tft.fillScreen(TFT_BLACK);
         tft.setTextColor(TFT_WHITE);
-        tft.setTextSize(1);
-        tft.setCursor(10,10);
-        tft.println("hello world");
-        tft.setTextSize(4);
+
 
         delay(1000);
 
@@ -135,9 +131,9 @@ void setup() {
           
         }
         
-        esp_sleep_enable_ext0_wakeup(GPIO_NUM_33,1); //1 = High, 0 = Low
-        esp_sleep_enable_ext0_wakeup(GPIO_NUM_0,0); //1 = High, 0 = Low
-        esp_sleep_enable_ext0_wakeup(GPIO_NUM_35,0); //1 = High, 0 = Low
+        esp_sleep_enable_ext0_wakeup(GPIO_NUM_12,0); //1 = High, 0 = Low
+        esp_sleep_enable_ext0_wakeup(GPIO_NUM_13,0); //1 = High, 0 = Low
+        esp_sleep_enable_ext0_wakeup(GPIO_NUM_14,0); //1 = High, 0 = Low
 
 
         esp_deep_sleep_start();
@@ -181,12 +177,16 @@ void espNow_begin(){
 void btnConfig(){
         btnL.setDebounceTime(50);
         btnR.setDebounceTime(150);
+        btnPWR.setDebounceTime(150);
         
         pinMode(btn1, INPUT_PULLUP);
         attachInterrupt(btn1, isr_btn1, FALLING);
         
         pinMode(btn2, INPUT_PULLUP);
         attachInterrupt(btn2, isr_btn2, FALLING);
+
+        pinMode(btnPow, INPUT_PULLUP);
+        attachInterrupt(btnPow, isr_btnPow, FALLING);
 }
 
 void btnHandler(){
@@ -194,21 +194,34 @@ void btnHandler(){
   
         btnL.loop();
         btnR.loop();
+        btnPWR.loop();
         
 
         if (btnL.isPressed()) {
-                vel_current -= vel_step;
+                vel_VFD -= vel_step;
                
-                packet = vel_current;
+                packet = vel_VFD;
+                print_vel(vel_VFD);
                 
                 esp_now_send(broadcastAddress, (uint8_t *) &packet, sizeof(packet));
                  
         }
 
         if (btnR.isPressed()) {
-                vel_current += vel_step;
+                vel_VFD += vel_step;
 
-                packet = vel_current;
+                packet = vel_VFD;
+                print_vel(vel_VFD);
+
+                esp_now_send(broadcastAddress, (uint8_t *) &packet, sizeof(packet));
+                 
+        }
+
+        if (btnPWR.isPressed()) {
+                vel_VFD = 0;
+
+                packet = vel_VFD;
+                print_vel(vel_VFD);
 
                 esp_now_send(broadcastAddress, (uint8_t *) &packet, sizeof(packet));
                  
@@ -225,7 +238,10 @@ void isr_btn2(){
         count_timeout = 0;
   
 }
-
+void isr_btnPWR(){
+        count_timeout = 0;
+  
+}
 
 
 
