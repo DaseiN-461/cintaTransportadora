@@ -1,25 +1,17 @@
 #include <Arduino.h>
-
-
 #include <esp_now.h>
- 
 #include <WiFi.h>
-
 #include <ezButton.h>
-
 #include <TFT_eSPI.h>
 #include <SPI.h>
-
 
 uint8_t broadcastAddress[] = {0x94, 0xB9, 0x7E, 0xC1, 0xFC, 0x30};
  
 bool update_flag = false;
 bool conection_flag = false;
 
-
 int packet;
 int request;
-
 
 esp_now_peer_info_t peerInfo;
 
@@ -36,7 +28,6 @@ int limSupVel = 4095;
 
 int count_timeout = 0;
 int timeout = 10;
-
 
 #define BUTTON_PIN_BITMASK 0x200000000 // 2^33 in hex
 
@@ -59,7 +50,6 @@ void isr_btn2();
 void update_velocity();
 void update_verification();
 
-
 void data_sent(const uint8_t *mac_addr, esp_now_send_status_t status) {
         if (status ==0){
                 conection_flag = true;
@@ -81,12 +71,10 @@ void data_receive(const uint8_t * mac, const uint8_t *incomingData, int len) {
                         print_vel(vel_VFD);
                 }
         }else{
-
         }
 }
 
 void setup() {
-  
         btnConfig();
         
         tft.begin();
@@ -95,9 +83,7 @@ void setup() {
         tft.fillScreen(TFT_BLACK);
         tft.setTextColor(TFT_WHITE);
 
-
         delay(1000);
-
 
         espNow_begin();
         update_velocity();
@@ -128,24 +114,16 @@ void setup() {
                                 update_velocity();
                         }
                 }
-          
         }
         
         esp_sleep_enable_ext0_wakeup(GPIO_NUM_12,0); //1 = High, 0 = Low
         esp_sleep_enable_ext0_wakeup(GPIO_NUM_13,0); //1 = High, 0 = Low
         esp_sleep_enable_ext0_wakeup(GPIO_NUM_14,0); //1 = High, 0 = Low
 
-
         esp_deep_sleep_start();
 }
 
-
-
-
 void loop() {
-  
-  
-
 }
 
 void espNow_begin(){
@@ -157,7 +135,6 @@ void espNow_begin(){
         }
 
         esp_now_register_send_cb(data_sent);
-        
         
         memcpy(peerInfo.peer_addr, broadcastAddress, 6);
         peerInfo.channel = 0;  
@@ -189,22 +166,18 @@ void btnConfig(){
         attachInterrupt(btnPow, isr_btnPow, FALLING);
 }
 
-void btnHandler(){
-  
-  
+void btnHandler(){  
         btnL.loop();
         btnR.loop();
         btnPWR.loop();
         
-
         if (btnL.isPressed()) {
                 vel_VFD -= vel_step;
                
                 packet = vel_VFD;
                 print_vel(vel_VFD);
                 
-                esp_now_send(broadcastAddress, (uint8_t *) &packet, sizeof(packet));
-                 
+                esp_now_send(broadcastAddress, (uint8_t *) &packet, sizeof(packet));    
         }
 
         if (btnR.isPressed()) {
@@ -214,7 +187,6 @@ void btnHandler(){
                 print_vel(vel_VFD);
 
                 esp_now_send(broadcastAddress, (uint8_t *) &packet, sizeof(packet));
-                 
         }
 
         if (btnPWR.isPressed()) {
@@ -224,26 +196,20 @@ void btnHandler(){
                 print_vel(vel_VFD);
 
                 esp_now_send(broadcastAddress, (uint8_t *) &packet, sizeof(packet));
-                 
         }
-
 }
-
 
 void isr_btn1(){
         count_timeout = 0;
-  
 }
+
 void isr_btn2(){
         count_timeout = 0;
-  
 }
+
 void isr_btnPWR(){
         count_timeout = 0;
-  
 }
-
-
 
 void tft_init(){
         tft.begin();
